@@ -145,10 +145,41 @@ public class Player : MonoBehaviour
 
     private void UpdateMove()
     {
-        if(_basePosition == _dragPosition)
+        var dragVector = GetDragVectorSwipe();
+        if (dragVector == Vector2.zero)
         {
-            // 入力がない時は何もしない
-            return;
+            dragVector = GetDragVectorKeyboard();
+            if (dragVector == Vector2.zero)
+            {
+                // 入力がない時は何もしない
+                return;
+            }
+        }
+
+        // カメラの現在角度を加味して、移動方向をX,Z軸基準に補正する（＝グリッドに沿わせる）
+        var correctedCameraAngle = CorrectAngle(_camera.eulerAngles.y);
+        var moveVector = Quaternion.Euler(0f, correctedCameraAngle, 0f) * new Vector3(dragVector.x, 0f, dragVector.y) * Time.deltaTime;
+        transform.position += moveVector;
+
+        // 移動方向へTrasformの向きを徐々に変える
+        var eulerAngles = transform.eulerAngles;
+        var moveAngles = Quaternion.LookRotation(moveVector).eulerAngles;
+        var angleDiff = Mathf.DeltaAngle(eulerAngles.y, moveAngles.y);
+        var angularVelocity = Mathf.Lerp(0f, _angularVelocity, Mathf.Clamp01(Mathf.Abs(angleDiff) / 90f));
+        eulerAngles.y += Mathf.Min(angularVelocity * Time.deltaTime, Mathf.Abs(angleDiff)) * Mathf.Sign(angleDiff);
+        transform.eulerAngles = eulerAngles;
+
+        _controller.SetAngleAxisOut(correctedCameraAngle - transform.eulerAngles.y);
+    }
+
+    /// <summary>
+    /// スワイプによる操作量を取得
+    /// </summary>
+    private Vector2 GetDragVectorSwipe()
+    {
+        if (_basePosition == _dragPosition)
+        {
+            return Vector2.zero;
         }
 
         var dragVector = _dragPosition - _basePosition;
@@ -166,21 +197,39 @@ public class Player : MonoBehaviour
         // 入力量に応じて移動速度を変える
         var speedRate = Mathf.Clamp01(dragDistance / _dragMaxDistance);
         dragVector = dragVector.normalized * Mathf.Lerp(0f, _speed, speedRate);
+        return dragVector;
+    }
 
-        // カメラの現在角度を加味して、移動方向をX,Z軸基準に補正する（＝グリッドに沿わせる）
-        var correctedCameraAngle = CorrectAngle(_camera.eulerAngles.y);
-        var moveVector = Quaternion.Euler(0f, correctedCameraAngle, 0f) * new Vector3(dragVector.x, 0f, dragVector.y) * Time.deltaTime;
-        transform.position += moveVector;
+    /// <summary>
+    /// キーボード入力による操作量を取得
+    /// </summary>
+    private Vector2 GetDragVectorKeyboard()
+    {
+        var dragVector = Vector2.zero;
 
-        // 移動方向へTrasformの向きを徐々に変える
-        var eulerAngles = transform.eulerAngles;
-        var moveAngles = Quaternion.LookRotation(moveVector).eulerAngles;
-        var angleDiff = Mathf.DeltaAngle(eulerAngles.y, moveAngles.y);
-        var angularVelocity = Mathf.Lerp(0f, _angularVelocity, Mathf.Clamp01(Mathf.Abs(angleDiff) / 90f));
-        eulerAngles.y += Mathf.Min(angularVelocity * Time.deltaTime, Mathf.Abs(angleDiff)) * Mathf.Sign(angleDiff);
-        transform.eulerAngles = eulerAngles;
+        if (Input.GetKey(KeyCode.UpArrow) || Input.GetKey(KeyCode.W))
+        {
+            dragVector.y += 1f;
+        }
+        if (Input.GetKey(KeyCode.DownArrow) || Input.GetKey(KeyCode.S))
+        {
+            dragVector.y -= 1f;
+        }
+        if (Input.GetKey(KeyCode.RightArrow) || Input.GetKey(KeyCode.D))
+        {
+            dragVector.x += 1f;
+        }
+        if (Input.GetKey(KeyCode.LeftArrow) || Input.GetKey(KeyCode.A))
+        {
+            dragVector.x -= 1f;
+        }
 
-        _controller.SetAngleAxisOut(correctedCameraAngle - transform.eulerAngles.y);
+        if(dragVector == Vector2.zero)
+        {
+            return dragVector;
+        }
+
+        return dragVector.normalized * _speed;
     }
     #endregion
 
